@@ -1,9 +1,14 @@
+type IEnumParmType = string | number | boolean;
 export interface IParam {
     name: string;
     alias?: string;
-    type: 'boolean' | 'string' | 'int' | 'float' | 'file' | 'enum';
+    type: 'boolean' | 'string' | 'int' | 'float' | 'file' | 'enum' | 'array';
     comment?: string;
+    /**
+     * 默认值，指定了默认值的都是可选
+     */
     default?: boolean | string | number;
+    list?: IEnumParmType[],
 }
 
 function arrayMax<T>(array: T[], callBack: (item: T) => number): number
@@ -18,73 +23,82 @@ function arrayMin<T>(array: any[], callBack?: (item: T) => number): number {
         ? Math.min.apply(Math, array.map(callBack))
         : Math.min.apply(Math, array);
 }
-type TryParseCallBack=(str:string)=>number;
-type TryParseBooleanCallBack=(str:string)=>boolean;
-const tyrParseInt = (s: string, errFunc:TryParseCallBack) => {
+type TryParseCallBack = (str: string) => number;
+type TryParseBooleanCallBack = (str: string) => boolean;
+const tyrParseInt = (s: string, errFunc: TryParseCallBack) => {
     if (!/^[+-]{0,1}\d+$/ig.test(s)) {
         if (errFunc) return errFunc(s);
         return NaN;
     }
     return parseInt(s);
 }
-const tyrParseFloat = (s:string, errFunc:TryParseCallBack) => {
+const tyrParseFloat = (s: string, errFunc: TryParseCallBack) => {
     if (!/^[+-]{0,1}\d+(\.\d+)?$/ig.test(s)) {
         if (errFunc) return errFunc(s);
         return NaN;
     }
     return parseFloat(s);
 }
-const tyrParseBoolean = (s:string, errFunc:TryParseBooleanCallBack) => {
+const tyrParseBoolean = (s: string, errFunc: TryParseBooleanCallBack) => {
     if (!/^(true|false|1|0|yes|no)$/ig.test(s)) {
         if (errFunc) return errFunc(s);
         throw new Error(`${s} 无效`);
     }
     return /^(true|1|yes)$/ig.test(s);
 }
-const checkParam = (opt: IParam, arg: string) => {
-    const arr = arg.split(' ').filter(s => s);
-    if (arr.length == 1) {
+const checkParam = (opt: IParam, ...values: string[]) => {
+    const result = {
+        name: opt.name,
+        alias: opt.alias,
+        value: undefined,
+    }
+    if (values.length < 1) {
         if (opt.type == 'boolean') {
             return {
-                name: opt.name,
-                alias: opt.alias,
+                ...result,
                 value: true
             };
-        } else {
-            if (opt.default === undefined) {
-                throw new Error(`缺少参数：${opt.name}`);
-            }
-            return null;
+        } else if (opt.default === undefined) {
+            throw new Error(`缺少参数：${opt.name}`);
         }
     }
-    const value = arr.slice(1).join(' ');
+    const value = values[0];
     switch (opt.type) {
         case 'string':
-        case 'enum':
         case 'file':
             return {
-                name: opt.name,
-                alias: opt.alias,
-                value
+                ...result,
+                value: values.join(' '),
             };
+        case 'enum':
+            if (opt.list.filter(s => s == value).length > 0) {
+                return {
+                    ...result,
+                    value,
+                };
+            } else {
+                throw new Error(`${opt.name} 缺少参数，${opt.list.join(',')}`);
+            }
         case 'int':
             return {
-                name: opt.name,
-                alias: opt.alias,
-                value: tyrParseInt(value, opt.default === undefined ? () => { throw new Error(`${opt.name} 输入不正确，必须是：${opt.type}`) } : () => <number>opt.default||0)
+                ...result,
+                value: tyrParseInt(value, opt.default === undefined ? () => { throw new Error(`${opt.name} 输入不正确，必须是：${opt.type}`) } : () => <number>opt.default || 0)
             }
         case 'float':
             return {
-                name: opt.name,
-                alias: opt.alias,
+                ...result,
                 value: tyrParseFloat(value, opt.default === undefined ? () => { throw new Error(`${opt.name} 输入不正确，必须是：${opt.type}`) } : () => <number>opt.default)
             }
         case 'boolean':
             return {
-                name: opt.name,
-                alias: opt.alias,
+                ...result,
                 value: tyrParseBoolean(value, opt.default === undefined ? () => { throw new Error(`${opt.name} 输入不正确，必须是：true, false, yes, no`) } : () => <boolean>opt.default)
             }
+        case 'array':
+            return {
+                ...result,
+                value: values
+            };
         default: return null;
     }
 }
@@ -107,7 +121,6 @@ const getCmdOptionName = (opt: IParam) => {
     }
     return opt.name.length > 1 ? `--${opt.name}` : `-${opt.name}`;
 };
-const trimLeft = (str: string, reg: RegExp, replace: string) => str.replace(reg, replace);
 export default class Commands {
     private params: IParam[] = [];
     private args: string[] = [];
@@ -128,6 +141,9 @@ export default class Commands {
     public get Args() { return this.args; }
 
     public addParam(opt: IParam): Commands {
+        if (opt.type === 'enum' && (opt.list === undefined || opt.list === null || opt.list.length < 1)) {
+            throw new Error(`枚举类型必须指定有效值：${opt.name}`);
+        }
         this.params.push(opt);
         if (opt.default !== undefined) {
             this.options[opt.name] = opt.default;
@@ -139,9 +155,13 @@ export default class Commands {
 
     public showHelp() {
         const lines = this.params.map(item => {
+            let comments = item.comment || '';
+            if (item.list) {
+                comments += ' ' + item.list.join(',');
+            }
             return {
                 name: `${getCmdOptionName(item)} <${getType(item)}>`,
-                comment: `${item.comment}${getDefault(item)}`
+                comment: `${comments}${getDefault(item)}`
             }
         });
         const maxLength = Math.min(arrayMax(lines, (item) => item.name.length) + 1, 35);
@@ -150,7 +170,17 @@ export default class Commands {
         })
     }
     public parse() {
-        if (process.argv.length < 3) { return this; }
+        const requireList = this.params.filter(p => p.default == undefined);
+        if (process.argv.length < 3) {
+            if (requireList.length < 1) {
+                return this;
+            }
+            console.error(`没有指定参数`);
+            if (this.autoShowHelp) {
+                this.showHelp()
+            }
+            process.exit(1);
+        }
         const args = process.argv.slice(2);
         try {
             this.args = [];
@@ -159,25 +189,35 @@ export default class Commands {
                 const arg = args[i];
                 if (arg.startsWith('-')) {
                     const found = this.params.find((opt) => (new RegExp(`^-{1,2}(${(opt.alias ? `${opt.name}|${opt.alias}` : opt.name)})$`, 'g')).test(arg));
-                    if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
-                        i++;
-                        if (found) {
-                            options.push(checkParam(found, `${arg} ${args[i]}`));
+                    if (found) {
+                        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+                            let tmpStr: string[] = [];
+                            for (let j = i + 1; j < args.length && !args[j].startsWith('-'); j++) {
+                                tmpStr.push(args[j]);
+                                i = j;
+                            }
+                            options.push(checkParam(found, ...tmpStr));
                         } else {
-                            options.push({
-                                name: trimLeft(arg, /^-?/ig, ''),
-                                value: args[i]
-                            });
+                            options.push(checkParam(found));
                         }
                     } else {
-                        if (found) {
-                            options.push(checkParam(found, arg));
-                        } else {
-                            options.push({
-                                name: trimLeft(arg, /^-?/ig, ''),
-                                value: undefined
-                            });
-                        }
+                        //     if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+                        //         let tmpStr: string[] = [];
+                        //         for (let j = i + 1; j < args.length && !args[j].startsWith('-'); j++) {
+                        //             tmpStr.push(args[j]);
+                        //             i = j;
+                        //         }
+                        //         options.push({
+                        //             name: arg.replace(/^-{1,}/ig, ''),
+                        //             value: tmpStr
+                        //         });
+                        //     } else {
+                        //         options.push({
+                        //             name: arg.replace(/^-{1,}/ig, ''),
+                        //             value: undefined
+                        //         });
+                        //     }
+                        this.args.push(arg);
                     }
                 } else {
                     this.args.push(arg);
@@ -191,7 +231,7 @@ export default class Commands {
             });
         } catch (err) {
             console.error(err.message);
-            console.log(err);
+            // console.log(err);
             if (this.autoShowHelp) {
                 this.showHelp()
             }
@@ -201,6 +241,16 @@ export default class Commands {
             this.showHelp();
             process.exit();
         }
+        this.params.filter(p => p.default == undefined)
+            .forEach(p => {
+                if (this.options[p.name] != undefined || (p.alias && this.options[p.alias] != undefined)) return;
+                console.error(`必须指定参数：${p.name}`);
+                if (this.autoShowHelp) {
+                    this.showHelp()
+                }
+                process.exit(1);
+            });
+
         return this;
     }
 }

@@ -1,12 +1,12 @@
 {
   "name": "x-command-parser",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "command line parser",
   "main": "dist/command.js",
   "scripts": {
     "build": "tsc",
     "clear":"node tools/clear.js",
-    "dev":"tsc && node ."
+    "dev":"tsc && node dist/dev.js"
   },
   "dependencies": {},
   "devDependencies": {
