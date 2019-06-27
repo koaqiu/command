@@ -158,7 +158,7 @@ export default class Commands {
             for (let i = 0; i < args.length; i++) {
                 const arg = args[i];
                 if (arg.startsWith('-')) {
-                    const found = this.params.find((opt) => (new RegExp(`^-{1,2}(${(opt.alias ? `${opt.name}|${opt.alias}` : opt.name)})`, 'g')).test(arg));
+                    const found = this.params.find((opt) => (new RegExp(`^-{1,2}(${(opt.alias ? `${opt.name}|${opt.alias}` : opt.name)})$`, 'g')).test(arg));
                     if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
                         i++;
                         if (found) {
