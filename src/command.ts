@@ -1,28 +1,34 @@
+/**
+ * 枚举类型参数的有效值
+ */
 type IEnumParmType = string | number | boolean;
 export interface IParam {
+    /**
+     * 参数名
+     */
     name: string;
+    /**
+     * 别名（可选）
+     */
     alias?: string;
+    /**
+     * 参数类型
+     */
     type: 'boolean' | 'string' | 'int' | 'float' | 'file' | 'enum' | 'array';
+    /**
+     * 参数说（可选）
+     */
     comment?: string;
     /**
      * 默认值，指定了默认值的都是可选
      */
     default?: boolean | string | number;
+    /**
+     * 枚举类型参数的有效值
+     */
     list?: IEnumParmType[],
 }
 
-function arrayMax<T>(array: T[], callBack: (item: T) => number): number
-function arrayMax<T>(array: any[], callBack?: (item: T) => number): number {
-    return callBack
-        ? Math.max.apply(Math, array.map(callBack))
-        : Math.max.apply(Math, array);
-}
-function arrayMin<T>(array: T[], callBack: (item: T) => number): number
-function arrayMin<T>(array: any[], callBack?: (item: T) => number): number {
-    return callBack
-        ? Math.min.apply(Math, array.map(callBack))
-        : Math.min.apply(Math, array);
-}
 type TryParseCallBack = (str: string) => number;
 type TryParseBooleanCallBack = (str: string) => boolean;
 const tyrParseInt = (s: string, errFunc: TryParseCallBack) => {
@@ -103,6 +109,9 @@ const checkParam = (opt: IParam, ...values: string[]) => {
     }
 }
 const getType = (opt: IParam) => {
+    if(opt.type === 'enum'){
+        return opt.list.join('|');
+    }
     return opt.type
 }
 const getDefault = (opt: IParam) => {
@@ -126,6 +135,10 @@ export default class Commands {
     private args: string[] = [];
     private options: { [key: string]: any } = {};
     private autoShowHelp = true;
+    /**
+     * 初始化
+     * @param autoShowHelp 解析发生错误时是否自动显示帮助
+     */
     constructor(autoShowHelp = true) {
         // this.showHelp();
         this.autoShowHelp = autoShowHelp;
@@ -137,9 +150,19 @@ export default class Commands {
             comment: '显示帮助'
         });
     }
+    /**
+     * 解析好的参数
+     */
     public get Options() { return this.options; }
+    /**
+     * 其他任何无法识别的 输入参数
+     */
     public get Args() { return this.args; }
 
+    /**
+     * 添加参数
+     * @param opt 
+     */
     public addParam(opt: IParam): Commands {
         if (opt.type === 'enum' && (opt.list === undefined || opt.list === null || opt.list.length < 1)) {
             throw new Error(`枚举类型必须指定有效值：${opt.name}`);
@@ -152,24 +175,29 @@ export default class Commands {
         }
         return this;
     }
-
+    /**
+     * 显示帮助
+     */
     public showHelp() {
-        const lines = this.params.map(item => {
-            let comments = item.comment || '';
-            if (item.list) {
-                comments += ' ' + item.list.join(',');
+        const lines = this.params.map(p => {
+            let comments = p.comment || '';
+            if (p.list) {
+                comments += ' ' + p.list.join(',');
             }
             return {
-                name: `${getCmdOptionName(item)} <${getType(item)}>`,
-                comment: `${comments}${getDefault(item)}`
+                name: `${getCmdOptionName(p)} <${getType(p)}>`,
+                comment: `${comments}${getDefault(p)}`
             }
         });
-        const maxLength = Math.min(arrayMax(lines, (item) => item.name.length) + 1, 35);
+        const maxLength = Math.min(Math.max(...lines.map(item => item.name.length)) + 1, 35);
         lines.forEach((item) => {
             console.log(`${item.name}${' '.repeat(maxLength - item.name.length)}`, item.comment)
         })
     }
-    public parse() {
+    /**
+     * 解析命令行参数
+     */
+    public parse(): Commands {
         const requireList = this.params.filter(p => p.default == undefined);
         if (process.argv.length < 3) {
             if (requireList.length < 1) {
@@ -191,12 +219,16 @@ export default class Commands {
                     const found = this.params.find((opt) => (new RegExp(`^-{1,2}(${(opt.alias ? `${opt.name}|${opt.alias}` : opt.name)})$`, 'g')).test(arg));
                     if (found) {
                         if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
-                            let tmpStr: string[] = [];
-                            for (let j = i + 1; j < args.length && !args[j].startsWith('-'); j++) {
-                                tmpStr.push(args[j]);
-                                i = j;
+                            if (found.type === 'array') {
+                                let tmpStr: string[] = [];
+                                for (let j = i + 1; j < args.length && !args[j].startsWith('-'); j++) {
+                                    tmpStr.push(args[j]);
+                                    i = j;
+                                }
+                                options.push(checkParam(found, ...tmpStr));
+                            } else {
+                                options.push(checkParam(found, args[++i]));
                             }
-                            options.push(checkParam(found, ...tmpStr));
                         } else {
                             options.push(checkParam(found));
                         }
