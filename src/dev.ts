@@ -3,7 +3,8 @@ import Commands from './command';
 const command = new Commands()
     .addParam({
         type:'boolean',
-        name:'b'
+        name:'autoDel',
+        alias:'a'
     })
     .addParam({
         type:'boolean',
@@ -26,6 +27,11 @@ const command = new Commands()
     .addParam({
         type:'array',
         name:'files',
+    })
+    .addParam({
+        type:'int',
+        name:'width',
+        default: 100
     })
     .parse();
 

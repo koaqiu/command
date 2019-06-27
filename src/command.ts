@@ -52,7 +52,7 @@ const tyrParseBoolean = (s: string, errFunc: TryParseBooleanCallBack) => {
     }
     return /^(true|1|yes)$/ig.test(s);
 }
-const checkParam = (opt: IParam, ...values: string[]) => {
+const checkParam = (opt: IParam, argName: string, ...values: string[]) => {
     const result = {
         name: opt.name,
         alias: opt.alias,
@@ -64,8 +64,8 @@ const checkParam = (opt: IParam, ...values: string[]) => {
                 ...result,
                 value: true
             };
-        } else if (opt.default === undefined) {
-            throw new Error(`缺少参数：${opt.name}`);
+        } else /*if (opt.default === undefined)*/ {
+            throw new Error(`参数：${(argName)} 没有指定有效值`);
         }
     }
     const value = values[0];
@@ -83,22 +83,22 @@ const checkParam = (opt: IParam, ...values: string[]) => {
                     value,
                 };
             } else {
-                throw new Error(`${opt.name} 缺少参数，${opt.list.join(',')}`);
+                throw new Error(`${argName} 缺少参数，${opt.list.join(',')}`);
             }
         case 'int':
             return {
                 ...result,
-                value: tyrParseInt(value, opt.default === undefined ? () => { throw new Error(`${opt.name} 输入不正确，必须是：${opt.type}`) } : () => <number>opt.default || 0)
+                value: tyrParseInt(value, () => { throw new Error(`${argName} ${value} 输入不正确，必须是：${opt.type}\n`) })
             }
         case 'float':
             return {
                 ...result,
-                value: tyrParseFloat(value, opt.default === undefined ? () => { throw new Error(`${opt.name} 输入不正确，必须是：${opt.type}`) } : () => <number>opt.default)
+                value: tyrParseFloat(value, () => { throw new Error(`${argName} ${value} 输入不正确，必须是：${opt.type}\n`) })
             }
         case 'boolean':
             return {
                 ...result,
-                value: tyrParseBoolean(value, opt.default === undefined ? () => { throw new Error(`${opt.name} 输入不正确，必须是：true, false, yes, no`) } : () => <boolean>opt.default)
+                value: tyrParseBoolean(value, () => { throw new Error(`${argName} ${value} 输入不正确，必须是：true, false, yes, no\n`) })
             }
         case 'array':
             return {
@@ -109,8 +109,9 @@ const checkParam = (opt: IParam, ...values: string[]) => {
     }
 }
 const getType = (opt: IParam) => {
-    if(opt.type === 'enum'){
-        return opt.list.join('|');
+    if (opt.type === 'enum') {
+        const s = opt.list.join('|');
+        if (s.length < 30) return s;
     }
     return opt.type
 }
@@ -123,12 +124,13 @@ const getDefault = (opt: IParam) => {
     }
     return '';
 }
+const getShowOptionName = (name: string) => name.length > 1 ? `--${name}` : `-${name}`;
 const getCmdOptionName = (opt: IParam) => {
     if (opt.alias) {
-        return (opt.name.length > 1 ? `--${opt.name}` : `-${opt.name}`) + ', ' +
-            (opt.alias.length > 1 ? `--${opt.alias}` : `-${opt.alias}`);
+        return getShowOptionName(opt.name) + ', ' +
+            getShowOptionName(opt.alias);
     }
-    return opt.name.length > 1 ? `--${opt.name}` : `-${opt.name}`;
+    return getShowOptionName(opt.name);
 };
 export default class Commands {
     private params: IParam[] = [];
@@ -225,12 +227,12 @@ export default class Commands {
                                     tmpStr.push(args[j]);
                                     i = j;
                                 }
-                                options.push(checkParam(found, ...tmpStr));
+                                options.push(checkParam(found, arg, ...tmpStr));
                             } else {
-                                options.push(checkParam(found, args[++i]));
+                                options.push(checkParam(found, arg, args[++i]));
                             }
                         } else {
-                            options.push(checkParam(found));
+                            options.push(checkParam(found, arg));
                         }
                     } else {
                         //     if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
@@ -276,7 +278,7 @@ export default class Commands {
         this.params.filter(p => p.default == undefined)
             .forEach(p => {
                 if (this.options[p.name] != undefined || (p.alias && this.options[p.alias] != undefined)) return;
-                console.error(`必须指定参数：${p.name}`);
+                console.error(`必须指定参数：${getShowOptionName(p.name)}`);
                 if (this.autoShowHelp) {
                     this.showHelp()
                 }

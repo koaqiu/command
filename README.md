@@ -10,6 +10,8 @@ node command line parser
 | array | 数组 | |
 | enum | 枚举 | |
 
+### API
+
 ``` ts
 /**
  * 枚举类型参数的有效值
