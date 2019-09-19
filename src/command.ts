@@ -28,10 +28,11 @@ export interface IParam {
      */
     list?: IEnumParmType[],
 }
+export type SubCommandType = (args:string[])=>number | Promise<Number>;
 export interface ISubCommand{
     name:string;
     desc: string;
-    cmd:(args:string[])=>number;
+    cmd:SubCommandType;
 }
 type TryParseCallBack = (str: string) => number;
 type TryParseBooleanCallBack = (str: string) => boolean;
@@ -166,7 +167,7 @@ export default class Commands {
      */
     public get Args() { return this.args; }
 
-    public addSubCommand(name: string, desc: string, cmd:(args:string[])=>number): Commands{
+    public addSubCommand(name: string, desc: string, cmd:SubCommandType): Commands{
         if(this.subCmds.find((item)=> item.name === name)){
             throw new Error(`子命令名称不能重复：${name}`);
         }
@@ -241,9 +242,18 @@ export default class Commands {
         // 子命令
         if(this.subCmds.length > 0 && args.length > 0){
             const subcmd = this.subCmds.find(item => item.name === args[0]);
+            console.log('find sub',subcmd, args[0])
             if(subcmd){
                 const code = subcmd.cmd(args.slice(1));
-                process.exit(code);
+                if(typeof code == 'number'){
+                    process.exit(code);
+                }else{
+                    code.then(process.exit).catch(err=>{
+                        console.error(err);
+                        process.exit(999);
+                    });
+                    return;
+                }
             }
         }
         try {
