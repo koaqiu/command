@@ -28,7 +28,11 @@ export interface IParam {
      */
     list?: IEnumParmType[],
 }
-
+export interface ISubCommand{
+    name:string;
+    desc: string;
+    cmd:(args:string[])=>number;
+}
 type TryParseCallBack = (str: string) => number;
 type TryParseBooleanCallBack = (str: string) => boolean;
 const tyrParseInt = (s: string, errFunc: TryParseCallBack) => {
@@ -135,6 +139,7 @@ const getCmdOptionName = (opt: IParam) => {
 export default class Commands {
     private params: IParam[] = [];
     private args: string[] = [];
+    private subCmds: ISubCommand[] = [];
     private options: { [key: string]: any } = {};
     private autoShowHelp = true;
     /**
@@ -161,6 +166,15 @@ export default class Commands {
      */
     public get Args() { return this.args; }
 
+    public addSubCommand(name: string, desc: string, cmd:(args:string[])=>number): Commands{
+        if(this.subCmds.find((item)=> item.name === name)){
+            throw new Error(`子命令名称不能重复：${name}`);
+        }
+        this.subCmds.push({
+            name, desc, cmd
+        });
+        return this;
+    }
     /**
      * 添加参数
      * @param opt 
@@ -181,6 +195,13 @@ export default class Commands {
      * 显示帮助
      */
     public showHelp() {
+        if(this.subCmds.length > 0){
+            const maxLength = Math.min(Math.max(...this.subCmds.map(item => item.name.length)) + 1, 35);
+            console.log('子命令：');
+            this.subCmds.forEach((item) => {
+                console.log(` ${item.name}${' '.repeat(maxLength - item.name.length)}`, item.desc);
+            })
+        }
         const lines = this.params.map(p => {
             let comments = p.comment || '';
             if (p.list) {
@@ -191,16 +212,19 @@ export default class Commands {
                 comment: `${comments}${getDefault(p)}`
             }
         });
-        const maxLength = Math.min(Math.max(...lines.map(item => item.name.length)) + 1, 35);
-        lines.forEach((item) => {
-            console.log(`${item.name}${' '.repeat(maxLength - item.name.length)}`, item.comment)
-        })
+        if(lines.length > 0){
+            console.log('参数：');
+            const maxLength = Math.min(Math.max(...lines.map(item => item.name.length)) + 1, 35);
+            lines.forEach((item) => {
+                console.log(`${item.name}${' '.repeat(maxLength - item.name.length)}`, item.comment)
+            })
+        }
     }
     /**
      * 解析命令行参数
      */
     public parse(...args:string[]): Commands {
-        if(args === null || args.length < 0){
+        if(args === null || args.length < 1){
             args = process.argv.slice(2);
         }
         const requireList = this.params.filter(p => p.default == undefined);
@@ -213,6 +237,14 @@ export default class Commands {
                 this.showHelp()
             }
             process.exit(1);
+        }
+        // 子命令
+        if(this.subCmds.length > 0 && args.length > 0){
+            const subcmd = this.subCmds.find(item => item.name === args[0]);
+            if(subcmd){
+                const code = subcmd.cmd(args.slice(1));
+                process.exit(code);
+            }
         }
         try {
             this.args = [];
