@@ -199,9 +199,12 @@ export default class Commands {
     /**
      * 解析命令行参数
      */
-    public parse(): Commands {
+    public parse(...args:string[]): Commands {
+        if(args === null || args.length < 0){
+            args = process.argv.slice(2);
+        }
         const requireList = this.params.filter(p => p.default == undefined);
-        if (process.argv.length < 3) {
+        if (args.length < 1) {
             if (requireList.length < 1) {
                 return this;
             }
@@ -211,7 +214,6 @@ export default class Commands {
             }
             process.exit(1);
         }
-        const args = process.argv.slice(2);
         try {
             this.args = [];
             const options: any[] = [];
