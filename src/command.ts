@@ -28,11 +28,12 @@ export interface IParam {
      */
     list?: IEnumParmType[],
 }
-export type SubCommandType = (args:string[])=>number | Promise<Number>;
-export interface ISubCommand{
-    name:string;
+export type SubCommandType = (args: string[]) => number | Promise<Number>;
+export interface ISubCommand {
+    name: string;
     desc: string;
-    cmd:SubCommandType;
+    cmd: SubCommandType;
+    isDefault: boolean;
 }
 type TryParseCallBack = (str: string) => number;
 type TryParseBooleanCallBack = (str: string) => boolean;
@@ -167,12 +168,15 @@ export default class Commands {
      */
     public get Args() { return this.args; }
 
-    public addSubCommand(name: string, desc: string, cmd:SubCommandType): Commands{
-        if(this.subCmds.find((item)=> item.name === name)){
+    public addSubCommand(name: string, desc: string, cmd: SubCommandType, isDefault = false): Commands {
+        if (this.subCmds.find((item) => item.name === name)) {
             throw new Error(`子命令名称不能重复：${name}`);
         }
+        if(isDefault && this.subCmds.find((item) => item.isDefault === true)) {
+            throw new Error(`默认子命令只能有一个`);
+        }
         this.subCmds.push({
-            name, desc, cmd
+            name, desc, cmd, isDefault
         });
         return this;
     }
@@ -196,7 +200,7 @@ export default class Commands {
      * 显示帮助
      */
     public showHelp() {
-        if(this.subCmds.length > 0){
+        if (this.subCmds.length > 0) {
             const maxLength = Math.min(Math.max(...this.subCmds.map(item => item.name.length)) + 1, 35);
             console.log('子命令：');
             this.subCmds.forEach((item) => {
@@ -213,7 +217,7 @@ export default class Commands {
                 comment: `${comments}${getDefault(p)}`
             }
         });
-        if(lines.length > 0){
+        if (lines.length > 0) {
             console.log('参数：');
             const maxLength = Math.min(Math.max(...lines.map(item => item.name.length)) + 1, 35);
             lines.forEach((item) => {
@@ -224,13 +228,13 @@ export default class Commands {
     /**
      * 解析命令行参数
      */
-    public parse(...args:string[]): Commands {
-        if(args === null || args.length < 1){
+    public parse(...args: string[]): Commands {
+        if (args === null || args.length < 1) {
             args = process.argv.slice(2);
         }
-        const requireList = this.params.filter(p => p.default == undefined);
+        const requireList = this.params.filter(p => p.default == undefined).length + this.subCmds.length;
         if (args.length < 1) {
-            if (requireList.length < 1) {
+            if (requireList < 1) {
                 return this;
             }
             console.error(`没有指定参数`);
@@ -240,15 +244,17 @@ export default class Commands {
             process.exit(1);
         }
         // 子命令
-        if(this.subCmds.length > 0 && args.length > 0){
-            const subcmd = this.subCmds.find(item => item.name === args[0]);
-            console.log('find sub',subcmd, args[0])
-            if(subcmd){
-                const code = subcmd.cmd(args.slice(1));
-                if(typeof code == 'number'){
+        if (this.subCmds.length > 0) {
+            const subcmd = args.length > 0 && !args[0].startsWith('-')
+                            ? this.subCmds.find(item => item.name === args[0])
+                            : this.subCmds.find(item => item.isDefault === true);
+            // console.log('find sub',subcmd, args[0])
+            if (subcmd) {
+                const code = subcmd.cmd(args[0].startsWith('-') ? args :args.slice(1));
+                if (typeof code == 'number') {
                     process.exit(code);
-                }else{
-                    code.then(process.exit).catch(err=>{
+                } else {
+                    code.then(process.exit).catch(err => {
                         console.error(err);
                         process.exit(999);
                     });
